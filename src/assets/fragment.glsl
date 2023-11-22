@@ -24,13 +24,13 @@ void main()
 
 
     vec3 finalColor = mix(vertexColor, fogColor, max(diss/4.0, 0));
-    FragColor = mix(vec4(finalColor, 1.0) * texColor, vec4(fogColor, 1.0), max(diss/4.0, 0));
-    FragColor.a -= diss;
+    FragColor = mix(vec4(finalColor, texColor.a) * texColor, vec4(fogColor, texColor.a), max(diss/4.0, 0));
 
-    if(FragColor.a < 0.3) {
+    FragColor.a -= max(diss, 0.0);
+
+    if(FragColor.a < 1.0) {
         discard;
-    } else {
-        FragColor.a = 1.0;
-    }
+    } 
+    
     FragColor = FragColor * brightness;
 }

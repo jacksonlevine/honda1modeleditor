@@ -12,8 +12,11 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+
+
 #define TEXTUREFACE_IMP
-#include "textureface.hpp"
+#include "Tree.hpp"
+
 
 //WINDOW
 GLFWwindow* WINDOW;
@@ -38,11 +41,15 @@ glm::vec3 CAMERA_UP(0.0f, 1.0f, 0.0f);
 
 //GAME-RELATED THINGS?
 float GLOBAL_BRIGHTNESS = 1.0;
-float SPEED_MULTIPLIER = 2.0f;
+float SPEED_MULTIPLIER = 15.0f;
 
 //GENERAL FACTS
 glm::vec3 UP(0.0f, 1.0f, 0.0f);
 int FACE_WINDING = GL_CW; //Counter clockwise if you're looking at the shape.
+
+//TIME
+double DELTA_TIME = 0;
+double LAST_FRAME = 0;
 
 
 GLuint SHADER_STANDARD;
@@ -68,11 +75,11 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos);
 void mouse_button_callback(GLFWwindow *window, int button, int action, int mods);
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods);
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
-
+int prepare_texture(GLuint *tptr, const char *tpath);
 int load_text (const char *fp, std::string &out);
 int create_window(const char *title);
 int create_shader_program(GLuint* prog, const char* vfp, const char* ffp);
-
+void update_time();
 void send_SHADER_STANDARD_uniforms();
 
 void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLfloat *uv, size_t vsize, size_t usize, GLuint shader);
@@ -101,7 +108,7 @@ int main() {
   if(!create_window("Honda 1 Model Preview")) {
         std::cerr << "Honda 1 Model Preview window create err" << std::endl;
         return EXIT_FAILURE;
-    }
+  }
   if(!prepare_texture(&TEXTURE_SHEET, "src/assets/texture.png")) {
       std::cerr << "Couldn't find or load texture." << std::endl;
       return EXIT_FAILURE;
@@ -117,6 +124,10 @@ int main() {
   glGenVertexArrays(1, &VERTEX_ARRAY_OBJECT);
   glBindVertexArray(VERTEX_ARRAY_OBJECT);
 
+  Model testTree = Tree::getTreeModel(0,0,0);
+
+  GLuint vbov, vbouv = 0;
+
   while(!glfwWindowShouldClose(WINDOW)) {
     react_to_input();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -125,10 +136,23 @@ int main() {
     send_SHADER_STANDARD_uniforms();
 
     //Draw here buckaroo
-    
+    if(vbov == 0) {
+      glGenBuffers(1, &vbov);
+      glGenBuffers(1, &vbouv);
+      bind_geometry(vbov, vbouv, 
+      testTree.verts.data(), testTree.uvs.data(), 
+      testTree.verts.size()*sizeof(GLfloat), testTree.uvs.size()*sizeof(GLfloat), 
+      SHADER_STANDARD);
+    } else {
+      bind_geometry_no_upload(vbov, vbouv, 
+      SHADER_STANDARD);
+    }
+
+    glDrawArrays(GL_TRIANGLES, 0, testTree.verts.size());
 
     glfwSwapBuffers(WINDOW);
     glfwPollEvents();
+    update_time();
   }
   
   glfwTerminate();
@@ -225,10 +249,10 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
 
 void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
 {
-    if (ImGui::GetIO().WantCaptureMouse) {
-        // ImGui is active, so don't handle the mouse event here
-        return;
-    }
+    // if (ImGui::GetIO().WantCaptureMouse) {
+    //     // ImGui is active, so don't handle the mouse event here
+    //     return;
+    // }
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
     {
         if (!MOUSE_CAPTURED)
@@ -249,9 +273,9 @@ void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
 }
 
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
-    if (ImGui::GetIO().WantCaptureKeyboard) {
-        return;
-    }
+    // if (ImGui::GetIO().WantCaptureKeyboard) {
+    //     return;
+    // }
     if(KEY_BINDS.find(key) != KEY_BINDS.end())
     {
         *KEY_BINDS[key] = action;
@@ -346,11 +370,8 @@ int create_window(const char *title) {
     }
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glCullFace(GL_BACK);
-    glFrontFace(FACE_WINDING);
     glDepthFunc(GL_LESS);
     return 1;
 }
@@ -434,4 +455,10 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     //MODELVIEW = MODEL * VIEW;
     //GLuint mvp_loc = glGetUniformLocation(SHADER_FAR, "mvp");
     //glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(MVP));
+}
+
+void update_time() {
+    double current_frame = glfwGetTime();
+    DELTA_TIME = current_frame - LAST_FRAME;
+    LAST_FRAME = current_frame;
 }
