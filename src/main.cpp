@@ -9,7 +9,7 @@
 #include <sstream>
 #include <fstream>
 #include <time.h>
-
+#include <string>
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -59,7 +59,9 @@ int FONT_SIZE = 20;
 float export_cooldown = 0.0f;
 bool CONFIRM_EXPORT = false;
 char FILE_NAME_BUFFER[256] = "";
-
+bool MODEL_CHANGED = false;
+int GENERATION = 0;
+bool REGENERATE = true;
 
 //GENERAL FACTS
 glm::vec3 UP(0.0f, 1.0f, 0.0f);
@@ -114,6 +116,7 @@ int INPUT_JUMP = 0;
 int INPUT_SHIFT = 0;
 int INPUT_CTRL = 0;
 int INPUT_EXPORT = 0;
+int INPUT_REGENERATE = 0;
 
 std::map<int, int*> KEY_BINDS = {
     {GLFW_KEY_W, &INPUT_FORWARD},
@@ -124,9 +127,14 @@ std::map<int, int*> KEY_BINDS = {
     {GLFW_KEY_LEFT_SHIFT, &INPUT_SHIFT},
     {GLFW_KEY_LEFT_CONTROL, &INPUT_CTRL},
     {GLFW_KEY_E, &INPUT_EXPORT},
+    {GLFW_KEY_R, &INPUT_REGENERATE}
 };
 
-Model theModel = Tree::getTreeModel(0,0,0);
+auto genFunc = [](){
+  return Tree::getTreeModel(0,0,0);
+};
+
+Model theModel = genFunc();
 
 
 
@@ -165,13 +173,18 @@ int main() {
     send_SHADER_STANDARD_uniforms();
 
     //Draw here buckaroo
-    if(vbov == 0) {
+    if(vbov == 0 || MODEL_CHANGED) {
+      
+      glDeleteBuffers(1, &vbov);
+      glDeleteBuffers(1, &vbouv);
       glGenBuffers(1, &vbov);
       glGenBuffers(1, &vbouv);
+
       bind_geometry(vbov, vbouv, 
       theModel.verts.data(), theModel.uvs.data(), 
       theModel.verts.size()*sizeof(GLfloat), theModel.uvs.size()*sizeof(GLfloat), 
       SHADER_STANDARD);
+      MODEL_CHANGED = false;
     } else {
       bind_geometry_no_upload(vbov, vbouv, 
       SHADER_STANDARD);
@@ -274,6 +287,24 @@ void react_to_input() {
           }
         }
       }
+    }
+    if(INPUT_REGENERATE) {
+      if(REGENERATE) {
+      if(INPUT_CTRL) {
+        for(int i = 0; i < 10; i++) {
+          theModel = genFunc();
+          MODEL_CHANGED = true;
+          GENERATION++;
+        }
+      } else {
+        theModel = genFunc();
+        MODEL_CHANGED = true;
+        GENERATION++;
+      }
+      REGENERATE = false;
+      }
+    } else {
+      REGENERATE = true;
     }
 
     if(recalc) {
@@ -560,7 +591,6 @@ void init_imgui() {
     io.Fonts->Build();
     io.FontDefault = io.Fonts->Fonts[0];
 
-
     ImGui_ImplGlfw_InitForOpenGL(WINDOW, true);
 
     ImGui_ImplOpenGL3_Init("#version 330");
@@ -576,9 +606,17 @@ void rend_imgui() {
     ImGui::SetNextWindowSize(ImVec2(0, 0));
     ImGui::Begin("HiddenWindow", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
 
-    ImGui::Text("Honda v0.0.0");
-
+    ImGui::Text("Honda1 Model Generator/Previewer");
+    std::string genText = "Generation: ";
+    genText += std::to_string(GENERATION);
+    ImGui::Text(genText.c_str());
+    ImGui::Text("Export: Ctrl + Shift + E");
+    ImGui::Text("Regenerate: R");
+    ImGui::Text("Jump 10 generations: Ctrl + R");
     ImGui::End();
+
+    ImGui::SetNextWindowPos(ImVec2(0, 150));
+    ImGui::SetNextWindowSize(ImVec2(350, 200));
     ImGui::Begin("Test Window", NULL,  ImGuiWindowFlags_NoBackground);
 
     ImGui::SliderFloat("Brightness", &GLOBAL_BRIGHTNESS, 0.0f, 1.0f);
