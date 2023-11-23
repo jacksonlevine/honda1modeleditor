@@ -101,6 +101,7 @@ int create_window(const char *title);
 int create_shader_program(GLuint* prog, const char* vfp, const char* ffp);
 void update_time();
 void send_SHADER_STANDARD_uniforms();
+Model load_model_from_file(std::string path);
 
 void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLfloat *uv, size_t vsize, size_t usize, GLuint shader);
 void bind_geometry_no_upload(GLuint vbov, GLuint vbouv, GLuint shader);
@@ -131,7 +132,7 @@ std::map<int, int*> KEY_BINDS = {
 };
 
 auto genFunc = [](){
-  return Tree::getTreeModel(0,0,0);
+  return load_model_from_file("wacky.mimosobj");
 };
 
 Model theModel = genFunc();
@@ -206,6 +207,44 @@ int main() {
   glfwTerminate();
 
   return EXIT_SUCCESS;
+}
+
+Model load_model_from_file(std::string path) {
+  std::ifstream file(path);
+
+  Model mod;
+
+  if(file.is_open()) {
+    std::string line;
+    bool doingUVs = false;
+
+    while (std::getline(file, line)) {
+
+      std::istringstream iss(line);
+      std::string word;
+      bool skipThisLine = false;
+
+      while(iss >> word) {
+        if(word.find('%') != std::string::npos) {
+          doingUVs = true;
+          skipThisLine = true;
+        }
+        if(!skipThisLine) {
+          if(!doingUVs) {
+            mod.verts.push_back(static_cast<GLfloat>(std::stof(word)));
+          } else {
+            mod.uvs.push_back(static_cast<GLfloat>(std::stof(word)));
+          }
+        } else {
+          break;
+        }
+      }
+    }
+  } else {
+    std::cout << "Unable to load model from " << path << ". Is it an officially recognized MIMOSOBJ format file?" << std::endl;
+  }
+
+  return mod;
 }
 
 void export_model_to_file() {
