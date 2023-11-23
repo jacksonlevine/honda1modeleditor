@@ -28,7 +28,7 @@ void main()
 
     FragColor.a -= max(diss, 0.0);
 
-    if(FragColor.a < 1.0) {
+    if(FragColor.a < 0.3) {
         discard;
     } 
     
