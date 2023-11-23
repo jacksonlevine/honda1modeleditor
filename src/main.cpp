@@ -63,6 +63,10 @@ bool MODEL_CHANGED = false;
 int GENERATION = 0;
 bool REGENERATE = true;
 
+
+bool LOAD_MODEL_PROMPT = false;
+char LOAD_FILE_NAME_BUFFER[256] = "";
+
 //GENERAL FACTS
 glm::vec3 UP(0.0f, 1.0f, 0.0f);
 int FACE_WINDING = GL_CW; //Counter clockwise if you're looking at the shape.
@@ -102,6 +106,7 @@ int create_shader_program(GLuint* prog, const char* vfp, const char* ffp);
 void update_time();
 void send_SHADER_STANDARD_uniforms();
 Model load_model_from_file(std::string path);
+void regenerate_from_genfunc();
 
 void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLfloat *uv, size_t vsize, size_t usize, GLuint shader);
 void bind_geometry_no_upload(GLuint vbov, GLuint vbouv, GLuint shader);
@@ -131,8 +136,8 @@ std::map<int, int*> KEY_BINDS = {
     {GLFW_KEY_R, &INPUT_REGENERATE}
 };
 
-auto genFunc = [](){
-  return load_model_from_file("wacky.mimosobj");
+std::function<Model()> genFunc = [](){
+  return Tree::getTreeModel(0,0,0);
 };
 
 Model theModel = genFunc();
@@ -331,14 +336,10 @@ void react_to_input() {
       if(REGENERATE) {
       if(INPUT_CTRL) {
         for(int i = 0; i < 10; i++) {
-          theModel = genFunc();
-          MODEL_CHANGED = true;
-          GENERATION++;
+          regenerate_from_genfunc();
         }
       } else {
-        theModel = genFunc();
-        MODEL_CHANGED = true;
-        GENERATION++;
+        regenerate_from_genfunc();
       }
       REGENERATE = false;
       }
@@ -351,6 +352,12 @@ void react_to_input() {
         MVP = PROJECTION * VIEW * MODEL;
         MODELVIEW = MODEL * VIEW;
     }
+}
+
+void regenerate_from_genfunc() {
+  theModel = genFunc();
+  MODEL_CHANGED = true;
+  GENERATION++;
 }
 
 void send_SHADER_STANDARD_uniforms() {
@@ -635,6 +642,11 @@ void init_imgui() {
     ImGui_ImplOpenGL3_Init("#version 330");
 }
 
+Model loadGenFunc() {
+                      std::string filename = LOAD_FILE_NAME_BUFFER;
+                      return load_model_from_file(filename);
+                    };
+
 
 void rend_imgui() {
     ImGui_ImplOpenGL3_NewFrame();
@@ -652,6 +664,12 @@ void rend_imgui() {
     ImGui::Text("Export: Ctrl + Shift + E");
     ImGui::Text("Regenerate: R");
     ImGui::Text("Jump 10 generations: Ctrl + R");
+    if(ImGui::Button("Load Model")) {
+      LOAD_MODEL_PROMPT = true;
+      glfwSetInputMode(WINDOW, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+      FIRST_MOUSE = true;
+      MOUSE_CAPTURED = false;
+    }
     ImGui::End();
 
     ImGui::SetNextWindowPos(ImVec2(0, 150));
@@ -676,7 +694,6 @@ void rend_imgui() {
         ImGui::Text("Model name:");
         ImGui::InputText("##invisible_label", FILE_NAME_BUFFER, IM_ARRAYSIZE(FILE_NAME_BUFFER));
         if (ImGui::Button("Export")) {
-          std::cout << "Clicked" << std::endl;
           export_model_to_file();
           CONFIRM_EXPORT = false;
           glfwSetInputMode(WINDOW, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -684,6 +701,31 @@ void rend_imgui() {
           MOUSE_CAPTURED = true;
         }
       ImGui::End();
+    } else if(LOAD_MODEL_PROMPT) {
+
+      ImVec2 windowSize = ImVec2(400, 300); // Desired size of the ImGui window
+      ImVec2 windowPos = ImVec2(
+          (WINDOW_WIDTH - windowSize.x) * 0.5f, 
+          (WINDOW_HEIGHT - windowSize.y) * 0.5f
+      );
+
+      ImGui::SetNextWindowSize(windowSize);
+      ImGui::SetNextWindowPos(windowPos);
+
+      ImGui::Begin("Load model from file...", NULL,  ImGuiWindowFlags_NoMove);
+        ImGui::Text("Enter file name or path:");
+        ImGui::InputText("##invisible_label", LOAD_FILE_NAME_BUFFER, IM_ARRAYSIZE(LOAD_FILE_NAME_BUFFER));
+        if (ImGui::Button("Load file")) {
+          std::string filename = LOAD_FILE_NAME_BUFFER;
+          genFunc = loadGenFunc;
+          LOAD_MODEL_PROMPT = false;
+          glfwSetInputMode(WINDOW, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+          FIRST_MOUSE = true;
+          MOUSE_CAPTURED = true;
+          regenerate_from_genfunc();
+        }
+      ImGui::End();
+
     }
 
     ImGui::Render();
