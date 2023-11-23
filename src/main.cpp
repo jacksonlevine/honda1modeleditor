@@ -8,6 +8,13 @@
 #include <functional>
 #include <sstream>
 #include <fstream>
+#include <time.h>
+
+
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -42,6 +49,17 @@ glm::vec3 CAMERA_UP(0.0f, 1.0f, 0.0f);
 //GAME-RELATED THINGS?
 float GLOBAL_BRIGHTNESS = 1.0;
 float SPEED_MULTIPLIER = 15.0f;
+
+int FONT_SIZE = 20;
+
+
+
+
+//MODEL EDITOR
+float export_cooldown = 0.0f;
+bool CONFIRM_EXPORT = false;
+char FILE_NAME_BUFFER[256] = "";
+
 
 //GENERAL FACTS
 glm::vec3 UP(0.0f, 1.0f, 0.0f);
@@ -85,6 +103,8 @@ void send_SHADER_STANDARD_uniforms();
 void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLfloat *uv, size_t vsize, size_t usize, GLuint shader);
 void bind_geometry_no_upload(GLuint vbov, GLuint vbouv, GLuint shader);
 void react_to_input();
+void init_imgui();
+void rend_imgui();
 
 int INPUT_FORWARD = 0;
 int INPUT_LEFT = 0;
@@ -92,6 +112,8 @@ int INPUT_RIGHT = 0;
 int INPUT_BACK = 0;
 int INPUT_JUMP = 0;
 int INPUT_SHIFT = 0;
+int INPUT_CTRL = 0;
+int INPUT_EXPORT = 0;
 
 std::map<int, int*> KEY_BINDS = {
     {GLFW_KEY_W, &INPUT_FORWARD},
@@ -99,12 +121,19 @@ std::map<int, int*> KEY_BINDS = {
     {GLFW_KEY_D, &INPUT_RIGHT},
     {GLFW_KEY_S, &INPUT_BACK},
     {GLFW_KEY_SPACE, &INPUT_JUMP},
-    {GLFW_KEY_LEFT_SHIFT, &INPUT_SHIFT}
+    {GLFW_KEY_LEFT_SHIFT, &INPUT_SHIFT},
+    {GLFW_KEY_LEFT_CONTROL, &INPUT_CTRL},
+    {GLFW_KEY_E, &INPUT_EXPORT},
 };
+
+Model theModel = Tree::getTreeModel(0,0,0);
+
+
+
 
 
 int main() {
-
+  //srand(time(NULL));
   if(!create_window("Honda 1 Model Preview")) {
         std::cerr << "Honda 1 Model Preview window create err" << std::endl;
         return EXIT_FAILURE;
@@ -120,11 +149,11 @@ int main() {
       std::cerr << "Create SHADER_STANDARD err" << std::endl;
       return EXIT_FAILURE;
   }
+  init_imgui();
 
   glGenVertexArrays(1, &VERTEX_ARRAY_OBJECT);
   glBindVertexArray(VERTEX_ARRAY_OBJECT);
 
-  Model testTree = Tree::getTreeModel(0,0,0);
 
   GLuint vbov, vbouv = 0;
 
@@ -140,24 +169,69 @@ int main() {
       glGenBuffers(1, &vbov);
       glGenBuffers(1, &vbouv);
       bind_geometry(vbov, vbouv, 
-      testTree.verts.data(), testTree.uvs.data(), 
-      testTree.verts.size()*sizeof(GLfloat), testTree.uvs.size()*sizeof(GLfloat), 
+      theModel.verts.data(), theModel.uvs.data(), 
+      theModel.verts.size()*sizeof(GLfloat), theModel.uvs.size()*sizeof(GLfloat), 
       SHADER_STANDARD);
     } else {
       bind_geometry_no_upload(vbov, vbouv, 
       SHADER_STANDARD);
     }
 
-    glDrawArrays(GL_TRIANGLES, 0, testTree.verts.size());
+    glDrawArrays(GL_TRIANGLES, 0, theModel.verts.size());
+
+    rend_imgui();
 
     glfwSwapBuffers(WINDOW);
     glfwPollEvents();
     update_time();
+
+    if(export_cooldown > 0) {
+      export_cooldown -= DELTA_TIME;
+    }
   }
   
   glfwTerminate();
 
   return EXIT_SUCCESS;
+}
+
+void export_model_to_file() {
+  export_cooldown = 5.0f;
+  std::string file = FILE_NAME_BUFFER;
+  file += ".mimosobj";
+
+  std::ofstream filestream(file);
+
+  if(!filestream.is_open()) {
+    std::cout << "Failed to damn write the file. Dammit!" << std::endl;
+  }
+  int threecounter = 0;
+  for(GLfloat num : theModel.verts) {
+    filestream << num << " "; 
+    ++threecounter;
+    if(threecounter == 3) {
+      filestream << std::endl;
+      threecounter = 0;
+    }
+  }
+
+  filestream << "%" << std::endl;
+
+  int twocounter = 0;
+  for(GLfloat num : theModel.uvs) {
+    filestream << num << " "; 
+    ++twocounter;
+    if(twocounter == 2) {
+      filestream << std::endl;
+      twocounter = 0;
+    }
+  }
+
+  std::cout << "Exported to file: " << file << std::endl;
+  std::cout << theModel.verts.size() << " vertices" << std::endl;
+  std::cout << theModel.uvs.size() << " UVs" << std::endl;
+
+  filestream.close();
 }
 
 void react_to_input() {
@@ -183,8 +257,23 @@ void react_to_input() {
         recalc = true;
     }
     if(INPUT_SHIFT) {
+      if(!INPUT_CTRL) {
         CAMERA_POSITION -= UP * (0.001f + static_cast<float>(DELTA_TIME)) * SPEED_MULTIPLIER;
         recalc = true;
+      }
+    }
+    if(INPUT_EXPORT) {
+      if(INPUT_SHIFT) {
+        if(INPUT_CTRL) {
+          if(export_cooldown <= 0.0f)
+          {
+            CONFIRM_EXPORT = true;
+            glfwSetInputMode(WINDOW, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            FIRST_MOUSE = true;
+            MOUSE_CAPTURED = false;
+          }
+        }
+      }
     }
 
     if(recalc) {
@@ -249,10 +338,10 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
 
 void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
 {
-    // if (ImGui::GetIO().WantCaptureMouse) {
-    //     // ImGui is active, so don't handle the mouse event here
-    //     return;
-    // }
+    if (ImGui::GetIO().WantCaptureMouse) {
+        // ImGui is active, so don't handle the mouse event here
+        return;
+    }
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
     {
         if (!MOUSE_CAPTURED)
@@ -273,9 +362,9 @@ void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
 }
 
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
-    // if (ImGui::GetIO().WantCaptureKeyboard) {
-    //     return;
-    // }
+    if (ImGui::GetIO().WantCaptureKeyboard) {
+        return;
+    }
     if(KEY_BINDS.find(key) != KEY_BINDS.end())
     {
         *KEY_BINDS[key] = action;
@@ -461,4 +550,66 @@ void update_time() {
     double current_frame = glfwGetTime();
     DELTA_TIME = current_frame - LAST_FRAME;
     LAST_FRAME = current_frame;
+}
+
+void init_imgui() {
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->AddFontFromFileTTF("src/assets/fonts/mimos1.otf", FONT_SIZE);
+    io.Fonts->Build();
+    io.FontDefault = io.Fonts->Fonts[0];
+
+
+    ImGui_ImplGlfw_InitForOpenGL(WINDOW, true);
+
+    ImGui_ImplOpenGL3_Init("#version 330");
+}
+
+
+void rend_imgui() {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(0, 0));
+    ImGui::Begin("HiddenWindow", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
+
+    ImGui::Text("Honda v0.0.0");
+
+    ImGui::End();
+    ImGui::Begin("Test Window", NULL,  ImGuiWindowFlags_NoBackground);
+
+    ImGui::SliderFloat("Brightness", &GLOBAL_BRIGHTNESS, 0.0f, 1.0f);
+    ImGui::SliderFloat("Speed", &SPEED_MULTIPLIER, 1.0f, 20.0f);
+    ImGui::End();
+
+    if(CONFIRM_EXPORT) {
+      ImVec2 windowSize = ImVec2(400, 300); // Desired size of the ImGui window
+      ImVec2 windowPos = ImVec2(
+          (WINDOW_WIDTH - windowSize.x) * 0.5f, 
+          (WINDOW_HEIGHT - windowSize.y) * 0.5f
+      );
+
+      ImGui::SetNextWindowSize(windowSize);
+      ImGui::SetNextWindowPos(windowPos);
+
+      ImGui::Begin("Export model to file...", NULL,  ImGuiWindowFlags_NoMove);
+        ImGui::Text("Model name:");
+        ImGui::InputText("##invisible_label", FILE_NAME_BUFFER, IM_ARRAYSIZE(FILE_NAME_BUFFER));
+        if (ImGui::Button("Export")) {
+          std::cout << "Clicked" << std::endl;
+          export_model_to_file();
+          CONFIRM_EXPORT = false;
+          glfwSetInputMode(WINDOW, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+          FIRST_MOUSE = true;
+          MOUSE_CAPTURED = true;
+        }
+      ImGui::End();
+    }
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
 }
